@@ -6,45 +6,27 @@ import { Building2, Plus, Pencil, Trash2, MapPin, X, AlertTriangle } from 'lucid
 
 const PROPERTY_TYPES = ['House','Flat / Apartment','HMO','Commercial','Student Let','Holiday Let','Other'];
 
-function PropertyModal({ property, onClose }) {
-  const { user } = useAuth();
+function PropertyModal({ property, onClose, onSave }) {
   const [form, setForm] = useState(property || { name:'', address:'', city:'', postcode:'', type:'House', bedrooms:'', notes:'' });
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const handleSave = async () => {
     if (!form.name || !form.address) return;
-    setError('');
     setSaving(true);
-    try {
-      if (property?.id) {
-        await updateProperty(property.id, form);
-      } else {
-        await addProperty(user.uid, form);
-      }
-      onClose();
-    } catch (err) {
-      console.error('Save property error:', err);
-      setError(err.message || 'Save failed. Please try again.');
-      setSaving(false);
-    }
+    await onSave(form);
+    setSaving(false);
+    onClose();
   };
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && !saving && onClose()}>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <h2 className="modal-title">{property ? 'Edit Property' : 'Add New Property'}</h2>
-          <button className="btn btn-icon btn-ghost" onClick={onClose} disabled={saving}><X size={18} /></button>
+          <button className="btn btn-icon btn-ghost" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="modal-body">
-          {error && (
-            <div className="alert alert-error" style={{ marginBottom: '16px' }}>
-              <AlertTriangle size={15} style={{ flexShrink: 0 }} />
-              <span>{error}</span>
-            </div>
-          )}
           <div className="form-group">
             <label className="form-label">Property Name *</label>
             <input className="form-input" placeholder="e.g. The Old Rectory" value={form.name} onChange={e => set('name', e.target.value)} />
@@ -80,10 +62,10 @@ function PropertyModal({ property, onClose }) {
             <textarea className="form-input" rows={3} placeholder="Any additional notes…" value={form.notes} onChange={e => set('notes', e.target.value)} style={{ resize:'vertical' }} />
           </div>
           <div className="form-actions">
-            <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
             <button className="btn btn-primary" onClick={handleSave} disabled={saving || !form.name || !form.address}>
               {saving ? <span className="spinner" /> : null}
-              {saving ? 'Saving…' : (property ? 'Save Changes' : 'Add Property')}
+              {property ? 'Save Changes' : 'Add Property'}
             </button>
           </div>
         </div>
@@ -93,18 +75,20 @@ function PropertyModal({ property, onClose }) {
 }
 
 export default function PropertiesPage() {
+  const { user } = useAuth();
   const { properties, documents } = useData();
   const [modal, setModal] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  const handleSave = async (form) => {
+    if (modal?.id) await updateProperty(modal.id, form);
+    else await addProperty(user.uid, form);
+  };
+
   const handleDelete = async (id) => {
     setDeleting(true);
-    try {
-      await deleteProperty(id);
-    } catch (err) {
-      console.error('Delete error:', err);
-    }
+    await deleteProperty(id);
     setDeleteConfirm(null);
     setDeleting(false);
   };
@@ -183,18 +167,15 @@ export default function PropertiesPage() {
       </div>
 
       {modal && (
-        <PropertyModal
-          property={modal === 'add' ? null : modal}
-          onClose={() => setModal(null)}
-        />
+        <PropertyModal property={modal === 'add' ? null : modal} onClose={() => setModal(null)} onSave={handleSave} />
       )}
 
       {deleteConfirm && (
-        <div className="modal-overlay" onClick={() => !deleting && setDeleteConfirm(null)}>
+        <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
           <div className="modal" style={{ maxWidth:'380px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title" style={{ fontSize:'18px' }}>Delete Property?</h2>
-              <button className="btn btn-icon btn-ghost" onClick={() => setDeleteConfirm(null)} disabled={deleting}><X size={18} /></button>
+              <button className="btn btn-icon btn-ghost" onClick={() => setDeleteConfirm(null)}><X size={18} /></button>
             </div>
             <div className="modal-body">
               <div className="alert alert-warn">
@@ -202,10 +183,9 @@ export default function PropertiesPage() {
                 <span>This will also delete all certificates linked to <strong>{deleteConfirm.name}</strong>. This cannot be undone.</span>
               </div>
               <div className="form-actions">
-                <button className="btn btn-secondary" onClick={() => setDeleteConfirm(null)} disabled={deleting}>Cancel</button>
+                <button className="btn btn-secondary" onClick={() => setDeleteConfirm(null)}>Cancel</button>
                 <button className="btn btn-danger" onClick={() => handleDelete(deleteConfirm.id)} disabled={deleting}>
-                  {deleting ? <span className="spinner" /> : <Trash2 size={14} />}
-                  {deleting ? 'Deleting…' : 'Delete Property'}
+                  {deleting ? <span className="spinner" /> : <Trash2 size={14} />} Delete Property
                 </button>
               </div>
             </div>

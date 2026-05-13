@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useData } from '../hooks/useData';
 import { addDocument, updateDocument, deleteDocument, getExpiryStatus } from '../lib/db';
-import { FileText, Plus, Pencil, Trash2, X, Search, AlertTriangle } from 'lucide-react';
+import { FileText, Plus, Pencil, Trash2, X, Search } from 'lucide-react';
 import { format } from 'date-fns';
 
 const DOC_TYPES = [
@@ -13,8 +13,7 @@ const DOC_TYPES = [
   'HMO Licence','Planning Permission','Boiler Service Record','Other',
 ];
 
-function DocModal({ doc, properties, onClose }) {
-  const { user } = useAuth();
+function DocModal({ doc, properties, onClose, onSave }) {
   const [form, setForm] = useState(doc ? {
     ...doc,
     expiryDate: doc.expiryDate?.toDate ? format(doc.expiryDate.toDate(), 'yyyy-MM-dd') : doc.expiryDate || '',
@@ -24,41 +23,24 @@ function DocModal({ doc, properties, onClose }) {
     issueDate:'', expiryDate:'', provider:'', policyNumber:'', reminderDays:30, notes:'',
   });
   const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState('');
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const handleSave = async () => {
     if (!form.name || !form.expiryDate || !form.propertyId) return;
-    setError('');
     setSaving(true);
-    try {
-      if (doc?.id) {
-        await updateDocument(doc.id, form);
-      } else {
-        await addDocument(user.uid, form);
-      }
-      onClose();
-    } catch (err) {
-      console.error('Save document error:', err);
-      setError(err.message || 'Save failed. Please try again.');
-      setSaving(false);
-    }
+    await onSave(form);
+    setSaving(false);
+    onClose();
   };
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && !saving && onClose()}>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth:'580px' }}>
         <div className="modal-header">
           <h2 className="modal-title">{doc ? 'Edit Certificate' : 'Add Certificate / Insurance'}</h2>
-          <button className="btn btn-icon btn-ghost" onClick={onClose} disabled={saving}><X size={18} /></button>
+          <button className="btn btn-icon btn-ghost" onClick={onClose}><X size={18} /></button>
         </div>
         <div className="modal-body">
-          {error && (
-            <div className="alert alert-error" style={{ marginBottom:'16px' }}>
-              <AlertTriangle size={15} style={{ flexShrink:0 }} />
-              <span>{error}</span>
-            </div>
-          )}
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Document Name *</label>
@@ -109,10 +91,10 @@ function DocModal({ doc, properties, onClose }) {
             <textarea className="form-input" rows={2} placeholder="Any additional details…" value={form.notes} onChange={e => set('notes', e.target.value)} style={{ resize:'vertical' }} />
           </div>
           <div className="form-actions">
-            <button className="btn btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>
+            <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
             <button className="btn btn-primary" onClick={handleSave} disabled={saving || !form.name || !form.expiryDate || !form.propertyId}>
               {saving ? <span className="spinner" /> : null}
-              {saving ? 'Saving…' : (doc ? 'Save Changes' : 'Add Certificate')}
+              {doc ? 'Save Changes' : 'Add Certificate'}
             </button>
           </div>
         </div>
@@ -122,11 +104,11 @@ function DocModal({ doc, properties, onClose }) {
 }
 
 export default function DocumentsPage() {
+  const { user } = useAuth();
   const { properties, documents } = useData();
-  const [modal, setModal]               = useState(null);
+  const [modal, setModal] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const [deleting, setDeleting]         = useState(false);
-  const [search, setSearch]             = useState('');
+  const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterProp,   setFilterProp]   = useState('all');
 
@@ -142,15 +124,9 @@ export default function DocumentsPage() {
     );
   });
 
-  const handleDelete = async (id) => {
-    setDeleting(true);
-    try {
-      await deleteDocument(id);
-    } catch (err) {
-      console.error('Delete error:', err);
-    }
-    setDeleteConfirm(null);
-    setDeleting(false);
+  const handleSave = async (form) => {
+    if (modal?.id) await updateDocument(modal.id, form);
+    else await addDocument(user.uid, form);
   };
 
   return (
@@ -167,7 +143,7 @@ export default function DocumentsPage() {
 
       <div className="page-body">
         {properties.length === 0 && (
-          <div className="alert alert-warn" style={{ marginBottom:'20px' }}>⚠️ Add a property first before adding certificates.</div>
+          <div className="alert alert-warn">⚠️ Add a property first before adding certificates.</div>
         )}
 
         <div style={{ display:'flex', gap:'12px', marginBottom:'20px', flexWrap:'wrap' }}>
@@ -242,30 +218,23 @@ export default function DocumentsPage() {
         )}
       </div>
 
-      {modal && (
-        <DocModal
-          doc={modal === 'add' ? null : modal}
-          properties={properties}
-          onClose={() => setModal(null)}
-        />
-      )}
+      {modal && <DocModal doc={modal === 'add' ? null : modal} properties={properties} onClose={() => setModal(null)} onSave={handleSave} />}
 
       {deleteConfirm && (
-        <div className="modal-overlay" onClick={() => !deleting && setDeleteConfirm(null)}>
+        <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
           <div className="modal" style={{ maxWidth:'380px' }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title" style={{ fontSize:'18px' }}>Delete Certificate?</h2>
-              <button className="btn btn-icon btn-ghost" onClick={() => setDeleteConfirm(null)} disabled={deleting}><X size={18} /></button>
+              <button className="btn btn-icon btn-ghost" onClick={() => setDeleteConfirm(null)}><X size={18} /></button>
             </div>
             <div className="modal-body">
               <p style={{ marginBottom:'20px', color:'var(--ink-soft)' }}>
                 Are you sure you want to delete <strong>{deleteConfirm.name}</strong>? This cannot be undone.
               </p>
               <div className="form-actions">
-                <button className="btn btn-secondary" onClick={() => setDeleteConfirm(null)} disabled={deleting}>Cancel</button>
-                <button className="btn btn-danger" onClick={() => handleDelete(deleteConfirm.id)} disabled={deleting}>
-                  {deleting ? <span className="spinner" /> : <Trash2 size={14} />}
-                  {deleting ? 'Deleting…' : 'Delete'}
+                <button className="btn btn-secondary" onClick={() => setDeleteConfirm(null)}>Cancel</button>
+                <button className="btn btn-danger" onClick={async () => { await deleteDocument(deleteConfirm.id); setDeleteConfirm(null); }}>
+                  <Trash2 size={14} /> Delete
                 </button>
               </div>
             </div>
